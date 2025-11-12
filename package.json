@@ -1,0 +1,21 @@
+{
+  "name": "shorttermemail",
+  "version": "1.0.0",
+  "description": "Temporary Email Service",
+  "main": "backend/server.js",
+  "scripts": {
+    "start": "cd backend && npm start",
+    "dev": "cd backend && npm run dev",
+    "install-backend": "cd backend && npm install",
+    "setup": "npm run install-backend"
+  },
+  "engines": {
+    "node": "22.x"
+  },
+  "keywords": [
+    "temporary-email",
+    "disposable-email"
+  ],
+  "author": "Your Name",
+  "license": "MIT"
+}
