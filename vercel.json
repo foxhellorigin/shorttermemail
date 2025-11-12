@@ -16,4 +16,8 @@
       "dest": "backend/server.js"
     }
   ]
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> eaffd32 (Fix vercel.json configuration)
