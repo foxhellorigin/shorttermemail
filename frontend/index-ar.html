@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ShortTermEmail.com - خدمة البريد الإلكتروني المؤقت</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --secondary: #1e40af;
+            --dark: #1f2937;
+            --light: #f8fafc;
+            --gray: #6b7280;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            color: white;
+        }
+        
+        .logo {
+            font-size: 2.5rem;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .tagline {
+            opacity: 0.9;
+            font-size: 1.1rem;
+        }
+        
+        .language-switcher {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+        }
+        
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            margin: 5px;
+        }
+        
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: var(--secondary);
+        }
+        
+        .email-generator {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            margin-bottom: 30px;
+        }
+        
+        .email-display {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .email-input {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #e5e7eb;
+            border-radius: 5px;
+            font-size: 16px;
+            font-family: monospace;
+            text-align: right;
+        }
+        
+        .copy-btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .inbox {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+        
+        .email-list {
+            max-height: 500px;
+            overflow-y: auto;
+            border: 1px solid #e5e7eb;
+            border-radius: 5px;
+        }
+        
+        .email-item {
+            padding: 15px;
+            border-bottom: 1px solid #e5e7eb;
+            cursor: pointer;
+            text-align: right;
+        }
+        
+        .email-item:hover {
+            background: #f8fafc;
+        }
+        
+        .email-subject {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .email-preview {
+            color: var(--gray);
+            font-size: 14px;
+        }
+        
+        .email-content {
+            display: none;
+            margin-top: 15px;
+            padding: 15px;
+            background: #f8fafc;
+            border-radius: 5px;
+            border-left: 4px solid var(--primary);
+            text-align: right;
+        }
+        
+        .refresh-btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-bottom: 15px;
+        }
+        
+        .test-email {
+            margin-top: 20px;
+            padding: 20px;
+            background: #f8fafc;
+            border-radius: 5px;
+            border-left: 4px solid #10b981;
+        }
+        
+        .loading {
+            padding: 20px;
+            text-align: center;
+            color: var(--gray);
+        }
+        
+        .no-emails {
+            padding: 20px;
+            text-align: center;
+            color: var(--gray);
+        }
+        
+        .error {
+            padding: 20px;
+            text-align: center;
+            color: #ef4444;
+            background: #fef2f2;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="language-switcher">
+        <a href="/" class="btn btn-primary">English</a>
+    </div>
+    
+    <div class="container">
+        <div class="header">
+            <div class="logo">ShortTermEmail.com</div>
+            <div class="tagline">آمن • خاص • خدمة بريد إلكتروني مؤقت</div>
+        </div>
+        
+        <div class="email-generator">
+            <h2 style="margin-bottom: 20px;">إنشاء بريد إلكتروني مؤقت</h2>
+            <div class="email-display">
+                <input type="text" id="emailAddress" class="email-input" readonly placeholder="انقر على 'إنشاء بريد جديد' لإنشاء عنوان">
+                <button id="copyButton" class="copy-btn">نسخ</button>
+            </div>
+            <div class="action-buttons">
+                <button id="generateButton" class="btn btn-primary">إنشاء بريد جديد</button>
+                <button id="refreshButton" class="btn btn-primary">تحديث البريد</button>
+            </div>
+            
+            <div class="test-email">
+                <h3 style="margin-bottom: 15px;">اختبار البريد الإلكتروني</h3>
+                <button id="testEmailButton" class="btn btn-primary">إرسال بريد اختباري</button>
+            </div>
+        </div>
+        
+        <div class="inbox">
+            <h2 style="margin-bottom: 20px;">صندوق الوارد</h2>
+            <button id="refreshInboxButton" class="refresh-btn">تحديث البريد</button>
+            <div id="emailList" class="email-list">
+                <div class="no-emails">قم بإنشاء عنوان بريد إلكتروني للبدء!</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Define all functions first
+        let currentEmail = '';
+        
+        function generateEmail() {
+            console.log('Generate button clicked');
+            const domains = ['shorttermemail.com', 'tempmail.shorttermemail.com', 'quick.shorttermemail.com'];
+            const randomString = Math.random().toString(36).substring(2, 10);
+            const domain = domains[Math.floor(Math.random() * domains.length)];
+            currentEmail = `${randomString}@${domain}`;
+            document.getElementById('emailAddress').value = currentEmail;
+            localStorage.setItem('currentEmail', currentEmail);
+            console.log('Generated email:', currentEmail);
+            refreshInbox();
+        }
+        
+        function copyEmail() {
+            const emailInput = document.getElementById('emailAddress');
+            emailInput.select();
+            document.execCommand('copy');
+            alert('تم نسخ عنوان البريد الإلكتروني إلى الحافظة!');
+        }
+        
+        async function sendTestEmail() {
+            if (!currentEmail) {
+                alert('يرجى إنشاء عنوان بريد إلكتروني أولاً');
+                return;
+            }
+            
+            try {
+                console.log('Sending test email to:', currentEmail);
+                
+                const response = await fetch('/api/simulate-email', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        toEmail: currentEmail,
+                        fromEmail: 'test@example.com',
+                        subject: 'بريد اختباري من ShortTermEmail',
+                        body: 'هذا بريد إلكتروني اختباري للتحقق من أن خدمة البريد الإلكتروني المؤقتة تعمل بشكل صحيح!\n\nيمكنك استخدام هذا العنوان للتسجيل في المواقع والخدمات دون الكشف عن بريدك الإلكتروني الشخصي.\n\nأطيب التحيات،\nفريق ShortTermEmail'
+                    })
+                });
+                
+                const result = await response.json();
+                console.log('Server response:', result);
+                
+                if (result.success) {
+                    alert('تم إرسال البريد الاختباري بنجاح! تحقق من صندوق الوارد خلال لحظة.');
+                    setTimeout(refreshInbox, 1000);
+                } else {
+                    alert('خطأ في إرسال البريد الاختباري: ' + (result.error || 'خطأ غير معروف'));
+                }
+            } catch (error) {
+                console.error('Error sending test email:', error);
+                alert('خطأ في إرسال البريد الاختباري. يرجى التحقق من وحدة التحكم.');
+            }
+        }
+        
+        async function refreshInbox() {
+            if (!currentEmail) {
+                currentEmail = localStorage.getItem('currentEmail');
+                if (currentEmail) {
+                    document.getElementById('emailAddress').value = currentEmail;
+                } else {
+                    document.getElementById('emailList').innerHTML = '<div class="no-emails">يرجى إنشاء عنوان بريد إلكتروني أولاً</div>';
+                    return;
+                }
+            }
+            
+            try {
+                document.getElementById('emailList').innerHTML = '<div class="loading">جاري تحميل الرسائل...</div>';
+                
+                const response = await fetch(`/api/emails/${encodeURIComponent(currentEmail)}`);
+                
+                if (!response.ok) {
+                    throw new Error(`Server error: ${response.status}`);
+                }
+                
+                const emails = await response.json();
+                console.log('Received emails:', emails);
+                
+                if (emails.length === 0) {
+                    document.getElementById('emailList').innerHTML = '<div class="no-emails">لا توجد رسائل بعد. بريدك الإلكتروني المؤقت جاهز لاستقبال الرسائل!</div>';
+                    return;
+                }
+                
+                document.getElementById('emailList').innerHTML = emails.map(email => `
+                    <div class="email-item" onclick="toggleEmail(${email.id})">
+                        <div class="email-subject">${email.subject || 'لا يوجد موضوع'}</div>
+                        <div class="email-preview">من: ${email.from_email} • ${new Date(email.timestamp).toLocaleString('ar-EG')}</div>
+                        <div id="email-${email.id}" class="email-content">
+                            <div><strong>من:</strong> ${email.from_email}</div>
+                            <div><strong>إلى:</strong> ${email.to_email}</div>
+                            <div><strong>التاريخ:</strong> ${new Date(email.timestamp).toLocaleString('ar-EG')}</div>
+                            <hr style="margin: 10px 0;">
+                            <div style="white-space: pre-line;">${email.body || 'لا يوجد محتوى'}</div>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Error fetching emails:', error);
+                document.getElementById('emailList').innerHTML = '<div class="error">خطأ في تحميل الرسائل. يرجى المحاولة مرة أخرى.</div>';
+            }
+        }
+        
+        function toggleEmail(emailId) {
+            const emailContent = document.getElementById(`email-${emailId}`);
+            if (emailContent.style.display === 'block') {
+                emailContent.style.display = 'none';
+            } else {
+                // Hide all other email contents
+                document.querySelectorAll('.email-content').forEach(el => {
+                    el.style.display = 'none';
+                });
+                emailContent.style.display = 'block';
+            }
+        }
+        
+        // Initialize event listeners after page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM loaded, setting up event listeners');
+            
+            // Set up button event listeners
+            document.getElementById('generateButton').addEventListener('click', generateEmail);
+            document.getElementById('copyButton').addEventListener('click', copyEmail);
+            document.getElementById('refreshButton').addEventListener('click', refreshInbox);
+            document.getElementById('testEmailButton').addEventListener('click', sendTestEmail);
+            document.getElementById('refreshInboxButton').addEventListener('click', refreshInbox);
+            
+            // Initialize with saved email or generate new one
+            const savedEmail = localStorage.getItem('currentEmail');
+            if (savedEmail) {
+                currentEmail = savedEmail;
+                document.getElementById('emailAddress').value = currentEmail;
+                refreshInbox();
+            }
+            
+            // Auto-refresh every 30 seconds
+            setInterval(refreshInbox, 30000);
+            
+            console.log('Event listeners set up successfully');
+        });
+    </script>
+</body>
+</html>
