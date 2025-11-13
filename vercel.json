@@ -1,4 +1,4 @@
-cat > vercel.json << 'EOF'
+json
 {
   "version": 2,
   "builds": [
@@ -9,9 +9,12 @@ cat > vercel.json << 'EOF'
   ],
   "routes": [
     {
+      "src": "/api/(.*)",
+      "dest": "backend/server.js"
+    },
+    {
       "src": "/(.*)",
       "dest": "backend/server.js"
     }
   ]
 }
-EOF
