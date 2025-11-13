@@ -236,7 +236,11 @@
         
         function generateEmail() {
             console.log('Generate button clicked');
-            const domains = ['shorttermemail.com', 'tempmail.shorttermemail.com', 'quick.shorttermemail.com'];
+            const domains = [
+                'shorttermemail.com', 
+                'tempmail.shorttermemail.com', 
+                'quick.shorttermemail.com'
+            ];
             const randomString = Math.random().toString(36).substring(2, 10);
             const domain = domains[Math.floor(Math.random() * domains.length)];
             currentEmail = `${randomString}@${domain}`;
@@ -269,9 +273,9 @@
                     },
                     body: JSON.stringify({
                         toEmail: currentEmail,
-                        fromEmail: 'test@example.com',
-                        subject: 'Test Email from ShortTermEmail',
-                        body: 'This is a test email to verify your temporary email service is working correctly!\n\nYou can use this address for signing up to websites and services without revealing your personal email.\n\nBest regards,\nShortTermEmail Team'
+                        fromEmail: 'test@shorttermemail.com',
+                        subject: 'Welcome to ShortTermEmail.com!',
+                        body: 'Congratulations! Your temporary email service is working perfectly.\n\nYou can use this email address for signing up to websites, services, and applications without revealing your personal email address.\n\nFeatures:\n• 100% Free\n• No Registration Required\n• Instant Email Delivery\n• Private & Secure\n\nBest regards,\nThe ShortTermEmail.com Team'
                     })
                 });
                 
