@@ -1,15 +1,17 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const { simpleParser } = require('mailparser');
 
 const app = express();
 
 // Middleware
 app.use(cors());
 app.use(express.json());
+app.use(express.text({ type: '*/*' })); // Handle raw text/MIME
 app.use(express.static(path.join(__dirname, '../frontend')));
 
-// Simple in-memory storage (Vercel has ephemeral storage)
+// Simple in-memory storage
 let emails = [];
 let emailId = 1;
 
@@ -57,50 +59,59 @@ app.post('/api/simulate-email', (req, res) => {
     }
 });
 
-// Webhook endpoint for real email services (SendGrid, Mailgun, etc.)
+// Webhook endpoint for SendGrid (handles raw MIME messages)
 app.post('/api/webhook/email', async (req, res) => {
     try {
-        console.log('Email webhook received:', JSON.stringify(req.body, null, 2));
+        console.log('📧 Webhook received from SendGrid');
         
         let toEmail, fromEmail, subject, body, htmlBody;
 
-        // SendGrid format
-        if (req.body.to && req.body.from) {
+        // Check if it's a raw MIME message (SendGrid format)
+        if (typeof req.body === 'string' && req.body.includes('From:') && req.body.includes('To:')) {
+            console.log('Processing raw MIME message from SendGrid');
+            
+            try {
+                const parsed = await simpleParser(req.body);
+                
+                toEmail = parsed.to?.text || '';
+                fromEmail = parsed.from?.text || '';
+                subject = parsed.subject || 'No Subject';
+                body = parsed.text || parsed.html || 'No content';
+                htmlBody = parsed.html || '';
+
+                console.log(`Parsed MIME: To=${toEmail}, From=${fromEmail}, Subject=${subject}`);
+            } catch (parseError) {
+                console.error('Error parsing MIME:', parseError);
+                return res.status(400).json({ error: 'Failed to parse MIME message' });
+            }
+        }
+        // JSON format (manual testing)
+        else if (req.body.to && req.body.from) {
+            console.log('Processing JSON format email');
             toEmail = req.body.to;
             fromEmail = req.body.from;
             subject = req.body.subject || 'No Subject';
             body = req.body.text || req.body.html || 'No content';
             htmlBody = req.body.html || '';
         }
-        // Mailgun format
-        else if (req.body.recipient && req.body.sender) {
-            toEmail = req.body.recipient;
-            fromEmail = req.body.sender;
-            subject = req.body.subject || 'No Subject';
-            body = req.body['body-plain'] || req.body['body-html'] || 'No content';
-            htmlBody = req.body['body-html'] || '';
-        }
-        // CloudMailin format
-        else if (req.body.envelope && req.body.headers) {
-            toEmail = req.body.envelope.to;
-            fromEmail = req.body.envelope.from;
-            subject = req.body.headers.subject || 'No Subject';
-            body = req.body.plain || req.body.html || 'No content';
-            htmlBody = req.body.html || '';
-        }
-        // Generic format
         else {
-            toEmail = req.body.to || req.body.toEmail || req.body.recipient;
-            fromEmail = req.body.from || req.body.fromEmail || req.body.sender;
-            subject = req.body.subject || 'No Subject';
-            body = req.body.body || req.body.text || req.body.plain || req.body.html || 'No content';
-            htmlBody = req.body.html || '';
+            console.log('Unknown format:', typeof req.body, Object.keys(req.body));
+            return res.status(400).json({ error: 'Unsupported email format' });
         }
 
         if (!toEmail) {
-            console.log('No recipient email found in webhook data');
+            console.log('No recipient email found');
             return res.status(400).json({ error: 'No recipient email found' });
         }
+
+        // Extract just the email address if it's in "Name <email@domain.com>" format
+        const extractEmail = (emailString) => {
+            const match = emailString.match(/<([^>]+)>/);
+            return match ? match[1] : emailString;
+        };
+
+        toEmail = extractEmail(toEmail);
+        fromEmail = extractEmail(fromEmail);
 
         // Store the email
         const newEmail = {
@@ -115,7 +126,7 @@ app.post('/api/webhook/email', async (req, res) => {
         };
 
         emails.push(newEmail);
-        console.log(`✅ Real email stored via webhook for ${toEmail} from ${fromEmail} (ID: ${newEmail.id})`);
+        console.log(`✅ Real email stored: ${toEmail} from ${fromEmail} (ID: ${newEmail.id})`);
 
         res.json({ 
             success: true, 
@@ -128,12 +139,12 @@ app.post('/api/webhook/email', async (req, res) => {
     }
 });
 
-// Test webhook endpoint (for debugging)
+// Test webhook endpoint
 app.get('/api/webhook/test', (req, res) => {
     res.json({ 
         message: 'Webhook endpoint is working!',
-        instructions: 'Send POST requests to /api/webhook/email with email data',
-        supported_services: ['SendGrid', 'Mailgun', 'CloudMailin', 'Generic']
+        instructions: 'SendGrid sends raw MIME messages, manual tests use JSON',
+        supported_formats: ['SendGrid MIME', 'JSON']
     });
 });
 
@@ -150,12 +161,7 @@ app.get('/health', (req, res) => {
     res.json({ 
         status: 'OK', 
         timestamp: new Date().toISOString(),
-        environment: process.env.NODE_ENV || 'development',
-        features: {
-            email_simulation: true,
-            webhook_reception: true,
-            real_email_delivery: 'Configure MX records with email service'
-        }
+        environment: process.env.NODE_ENV || 'development'
     });
 });
 
@@ -172,17 +178,7 @@ app.get('/ar', (req, res) => {
 app.get('*', (req, res) => {
     res.status(404).json({ 
         error: 'Route not found', 
-        path: req.path,
-        available_routes: [
-            'GET  /',
-            'GET  /ar',
-            'GET  /health',
-            'GET  /api/stats',
-            'GET  /api/emails/:email',
-            'GET  /api/webhook/test',
-            'POST /api/simulate-email',
-            'POST /api/webhook/email'
-        ]
+        path: req.path
     });
 });
 
