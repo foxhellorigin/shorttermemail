@@ -207,23 +207,23 @@
         <div class="email-generator">
             <h2 style="margin-bottom: 20px;">Generate Temporary Email</h2>
             <div class="email-display">
-                <input type="text" id="emailAddress" class="email-input" readonly placeholder="Click 'Generate New Email' to create an address">
-                <button id="copyButton" class="copy-btn">Copy</button>
+                <input type="text" id="emailAddress" class="email-input" readonly placeholder="Click the button below to generate an email">
+                <button id="copyBtn" class="copy-btn">Copy</button>
             </div>
             <div class="action-buttons">
-                <button id="generateButton" class="btn btn-primary">Generate New Email</button>
-                <button id="refreshButton" class="btn btn-primary">Refresh Inbox</button>
+                <button id="generateBtn" class="btn btn-primary">Generate New Email</button>
+                <button id="refreshBtn" class="btn btn-primary">Refresh Inbox</button>
             </div>
             
             <div class="test-email">
                 <h3 style="margin-bottom: 15px;">Test Your Email</h3>
-                <button id="testEmailButton" class="btn btn-primary">Send Test Email</button>
+                <button id="testBtn" class="btn btn-primary">Send Test Email</button>
             </div>
         </div>
         
         <div class="inbox">
             <h2 style="margin-bottom: 20px;">Inbox</h2>
-            <button id="refreshInboxButton" class="refresh-btn">Refresh Inbox</button>
+            <button id="refreshInboxBtn" class="refresh-btn">Refresh Inbox</button>
             <div id="emailList" class="email-list">
                 <div class="no-emails">Generate an email address to get started!</div>
             </div>
@@ -231,31 +231,63 @@
     </div>
 
     <script>
-        // Define all functions first
+        // Simple email service
         let currentEmail = '';
+        
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Page loaded, initializing...');
+            
+            // Set up button event listeners
+            document.getElementById('generateBtn').addEventListener('click', generateEmail);
+            document.getElementById('copyBtn').addEventListener('click', copyEmail);
+            document.getElementById('testBtn').addEventListener('click', sendTestEmail);
+            document.getElementById('refreshBtn').addEventListener('click', refreshInbox);
+            document.getElementById('refreshInboxBtn').addEventListener('click', refreshInbox);
+            
+            // Load saved email
+            const savedEmail = localStorage.getItem('currentEmail');
+            if (savedEmail) {
+                currentEmail = savedEmail;
+                document.getElementById('emailAddress').value = currentEmail;
+                refreshInbox();
+            }
+            
+            console.log('Initialization complete');
+        });
         
         function generateEmail() {
             console.log('Generate button clicked');
+            
             const domains = [
                 'shorttermemail.com', 
                 'tempmail.shorttermemail.com', 
                 'quick.shorttermemail.com'
-		'inbound.shorttermemail.com'
             ];
+            
             const randomString = Math.random().toString(36).substring(2, 10);
             const domain = domains[Math.floor(Math.random() * domains.length)];
-            currentEmail = `${randomString}@${domain}`;
+            currentEmail = randomString + '@' + domain;
+            
             document.getElementById('emailAddress').value = currentEmail;
             localStorage.setItem('currentEmail', currentEmail);
+            
             console.log('Generated email:', currentEmail);
+            alert('New email created: ' + currentEmail);
+            
             refreshInbox();
         }
         
         function copyEmail() {
             const emailInput = document.getElementById('emailAddress');
+            if (!emailInput.value) {
+                alert('Please generate an email first');
+                return;
+            }
+            
             emailInput.select();
             document.execCommand('copy');
-            alert('Email address copied to clipboard!');
+            alert('Email copied to clipboard!');
         }
         
         async function sendTestEmail() {
@@ -265,8 +297,6 @@
             }
             
             try {
-                console.log('Sending test email to:', currentEmail);
-                
                 const response = await fetch('/api/simulate-email', {
                     method: 'POST',
                     headers: {
@@ -276,109 +306,70 @@
                         toEmail: currentEmail,
                         fromEmail: 'test@shorttermemail.com',
                         subject: 'Welcome to ShortTermEmail.com!',
-                        body: 'Congratulations! Your temporary email service is working perfectly.\n\nYou can use this email address for signing up to websites, services, and applications without revealing your personal email address.\n\nFeatures:\n• 100% Free\n• No Registration Required\n• Instant Email Delivery\n• Private & Secure\n\nBest regards,\nThe ShortTermEmail.com Team'
+                        body: 'Congratulations! Your temporary email service is working perfectly.'
                     })
                 });
                 
                 const result = await response.json();
-                console.log('Server response:', result);
                 
                 if (result.success) {
-                    alert('Test email sent successfully! Check your inbox in a moment.');
+                    alert('Test email sent successfully!');
                     setTimeout(refreshInbox, 1000);
                 } else {
-                    alert('Error sending test email: ' + (result.error || 'Unknown error'));
+                    alert('Error: ' + (result.error || 'Unknown error'));
                 }
             } catch (error) {
-                console.error('Error sending test email:', error);
-                alert('Error sending test email. Please check the console.');
+                console.error('Error:', error);
+                alert('Error sending test email. Please try again.');
             }
         }
         
         async function refreshInbox() {
             if (!currentEmail) {
-                currentEmail = localStorage.getItem('currentEmail');
-                if (currentEmail) {
-                    document.getElementById('emailAddress').value = currentEmail;
-                } else {
-                    document.getElementById('emailList').innerHTML = '<div class="no-emails">Please generate an email address first</div>';
-                    return;
-                }
+                document.getElementById('emailList').innerHTML = '<div class="no-emails">Please generate an email address first</div>';
+                return;
             }
             
             try {
                 document.getElementById('emailList').innerHTML = '<div class="loading">Loading emails...</div>';
                 
-                const response = await fetch(`/api/emails/${encodeURIComponent(currentEmail)}`);
-                
-                if (!response.ok) {
-                    throw new Error(`Server error: ${response.status}`);
-                }
-                
+                const response = await fetch('/api/emails/' + encodeURIComponent(currentEmail));
                 const emails = await response.json();
-                console.log('Received emails:', emails);
                 
                 if (emails.length === 0) {
-                    document.getElementById('emailList').innerHTML = '<div class="no-emails">No emails yet. Your temporary email is ready to receive messages!</div>';
+                    document.getElementById('emailList').innerHTML = '<div class="no-emails">No emails yet. Your temporary email is ready!</div>';
                     return;
                 }
                 
-                document.getElementById('emailList').innerHTML = emails.map(email => `
-                    <div class="email-item" onclick="toggleEmail(${email.id})">
-                        <div class="email-subject">${email.subject || 'No Subject'}</div>
-                        <div class="email-preview">From: ${email.from_email} • ${new Date(email.timestamp).toLocaleString()}</div>
-                        <div id="email-${email.id}" class="email-content">
-                            <div><strong>From:</strong> ${email.from_email}</div>
-                            <div><strong>To:</strong> ${email.to_email}</div>
-                            <div><strong>Date:</strong> ${new Date(email.timestamp).toLocaleString()}</div>
-                            <hr style="margin: 10px 0;">
-                            <div style="white-space: pre-line;">${email.body || 'No content'}</div>
-                        </div>
-                    </div>
-                `).join('');
+                let emailHTML = '';
+                emails.forEach(function(email) {
+                    emailHTML += '<div class="email-item" onclick="toggleEmail(' + email.id + ')">';
+                    emailHTML += '<div class="email-subject">' + (email.subject || 'No Subject') + '</div>';
+                    emailHTML += '<div class="email-preview">From: ' + email.from_email + ' • ' + new Date(email.timestamp).toLocaleString() + '</div>';
+                    emailHTML += '<div id="email-' + email.id + '" class="email-content">';
+                    emailHTML += '<div><strong>From:</strong> ' + email.from_email + '</div>';
+                    emailHTML += '<div><strong>To:</strong> ' + email.to_email + '</div>';
+                    emailHTML += '<div><strong>Date:</strong> ' + new Date(email.timestamp).toLocaleString() + '</div>';
+                    emailHTML += '<hr style="margin: 10px 0;">';
+                    emailHTML += '<div style="white-space: pre-line;">' + (email.body || 'No content') + '</div>';
+                    emailHTML += '</div></div>';
+                });
+                
+                document.getElementById('emailList').innerHTML = emailHTML;
             } catch (error) {
-                console.error('Error fetching emails:', error);
-                document.getElementById('emailList').innerHTML = '<div class="error">Error loading emails. Please try again.</div>';
+                console.error('Error:', error);
+                document.getElementById('emailList').innerHTML = '<div class="error">Error loading emails</div>';
             }
         }
         
         function toggleEmail(emailId) {
-            const emailContent = document.getElementById(`email-${emailId}`);
+            const emailContent = document.getElementById('email-' + emailId);
             if (emailContent.style.display === 'block') {
                 emailContent.style.display = 'none';
             } else {
-                // Hide all other email contents
-                document.querySelectorAll('.email-content').forEach(el => {
-                    el.style.display = 'none';
-                });
                 emailContent.style.display = 'block';
             }
         }
-        
-        // Initialize event listeners after page loads
-        document.addEventListener('DOMContentLoaded', function() {
-            console.log('DOM loaded, setting up event listeners');
-            
-            // Set up button event listeners
-            document.getElementById('generateButton').addEventListener('click', generateEmail);
-            document.getElementById('copyButton').addEventListener('click', copyEmail);
-            document.getElementById('refreshButton').addEventListener('click', refreshInbox);
-            document.getElementById('testEmailButton').addEventListener('click', sendTestEmail);
-            document.getElementById('refreshInboxButton').addEventListener('click', refreshInbox);
-            
-            // Initialize with saved email or generate new one
-            const savedEmail = localStorage.getItem('currentEmail');
-            if (savedEmail) {
-                currentEmail = savedEmail;
-                document.getElementById('emailAddress').value = currentEmail;
-                refreshInbox();
-            }
-            
-            // Auto-refresh every 30 seconds
-            setInterval(refreshInbox, 30000);
-            
-            console.log('Event listeners set up successfully');
-        });
     </script>
 </body>
 </html>
