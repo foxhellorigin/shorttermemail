@@ -210,23 +210,23 @@
         <div class="email-generator">
             <h2 style="margin-bottom: 20px;">إنشاء بريد إلكتروني مؤقت</h2>
             <div class="email-display">
-                <input type="text" id="emailAddress" class="email-input" readonly placeholder="انقر على 'إنشاء بريد جديد' لإنشاء عنوان">
-                <button id="copyButton" class="copy-btn">نسخ</button>
+                <input type="text" id="emailAddress" class="email-input" readonly placeholder="انقر على الزر أدناه لإنشاء بريد إلكتروني">
+                <button id="copyBtn" class="copy-btn">نسخ</button>
             </div>
             <div class="action-buttons">
-                <button id="generateButton" class="btn btn-primary">إنشاء بريد جديد</button>
-                <button id="refreshButton" class="btn btn-primary">تحديث البريد</button>
+                <button id="generateBtn" class="btn btn-primary">إنشاء بريد جديد</button>
+                <button id="refreshBtn" class="btn btn-primary">تحديث البريد</button>
             </div>
             
             <div class="test-email">
                 <h3 style="margin-bottom: 15px;">اختبار البريد الإلكتروني</h3>
-                <button id="testEmailButton" class="btn btn-primary">إرسال بريد اختباري</button>
+                <button id="testBtn" class="btn btn-primary">إرسال بريد اختباري</button>
             </div>
         </div>
         
         <div class="inbox">
             <h2 style="margin-bottom: 20px;">صندوق الوارد</h2>
-            <button id="refreshInboxButton" class="refresh-btn">تحديث البريد</button>
+            <button id="refreshInboxBtn" class="refresh-btn">تحديث البريد</button>
             <div id="emailList" class="email-list">
                 <div class="no-emails">قم بإنشاء عنوان بريد إلكتروني للبدء!</div>
             </div>
@@ -234,28 +234,60 @@
     </div>
 
     <script>
-        // Define all functions first
+        // خدمة البريد الإلكتروني البسيطة
         let currentEmail = '';
         
+        // التهيئة عند تحميل الصفحة
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('تم تحميل الصفحة، جاري التهيئة...');
+            
+            // إعداد مستمعي الأحداث للأزرار
+            document.getElementById('generateBtn').addEventListener('click', generateEmail);
+            document.getElementById('copyBtn').addEventListener('click', copyEmail);
+            document.getElementById('testBtn').addEventListener('click', sendTestEmail);
+            document.getElementById('refreshBtn').addEventListener('click', refreshInbox);
+            document.getElementById('refreshInboxBtn').addEventListener('click', refreshInbox);
+            
+            // تحميل البريد الإلكتروني المحفوظ
+            const savedEmail = localStorage.getItem('currentEmail');
+            if (savedEmail) {
+                currentEmail = savedEmail;
+                document.getElementById('emailAddress').value = currentEmail;
+                refreshInbox();
+            }
+            
+            console.log('اكتملت التهيئة');
+        });
+        
         function generateEmail() {
-            console.log('Generate button clicked');
+            console.log('تم النقر على زر الإنشاء');
+            
             const domains = [
                 'shorttermemail.com', 
                 'tempmail.shorttermemail.com', 
                 'quick.shorttermemail.com'
-		'inbound.shorttermemail.com'
             ];
+            
             const randomString = Math.random().toString(36).substring(2, 10);
             const domain = domains[Math.floor(Math.random() * domains.length)];
-            currentEmail = `${randomString}@${domain}`;
+            currentEmail = randomString + '@' + domain;
+            
             document.getElementById('emailAddress').value = currentEmail;
             localStorage.setItem('currentEmail', currentEmail);
-            console.log('Generated email:', currentEmail);
+            
+            console.log('البريد الإلكتروني المُنشأ:', currentEmail);
+            alert('تم إنشاء بريد إلكتروني جديد: ' + currentEmail);
+            
             refreshInbox();
         }
         
         function copyEmail() {
             const emailInput = document.getElementById('emailAddress');
+            if (!emailInput.value) {
+                alert('يرجى إنشاء بريد إلكتروني أولاً');
+                return;
+            }
+            
             emailInput.select();
             document.execCommand('copy');
             alert('تم نسخ عنوان البريد الإلكتروني إلى الحافظة!');
@@ -268,8 +300,6 @@
             }
             
             try {
-                console.log('Sending test email to:', currentEmail);
-                
                 const response = await fetch('/api/simulate-email', {
                     method: 'POST',
                     headers: {
@@ -279,109 +309,70 @@
                         toEmail: currentEmail,
                         fromEmail: 'test@shorttermemail.com',
                         subject: 'مرحباً بك في ShortTermEmail.com!',
-                        body: 'تهانينا! خدمة البريد الإلكتروني المؤقتة تعمل بشكل مثالي.\n\nيمكنك استخدام عنوان البريد الإلكتروني هذا للتسجيل في المواقع والخدمات والتطبيقات دون الكشف عن بريدك الإلكتروني الشخصي.\n\nالمميزات:\n• 100% مجاني\n• لا حاجة للتسجيل\n• تسليم فوري للبريد الإلكتروني\n• خاص وآمن\n\nأطيب التحيات،\nفريق ShortTermEmail.com'
+                        body: 'تهانينا! خدمة البريد الإلكتروني المؤقتة تعمل بشكل مثالي.'
                     })
                 });
                 
                 const result = await response.json();
-                console.log('Server response:', result);
                 
                 if (result.success) {
-                    alert('تم إرسال البريد الاختباري بنجاح! تحقق من صندوق الوارد خلال لحظة.');
+                    alert('تم إرسال البريد الاختباري بنجاح!');
                     setTimeout(refreshInbox, 1000);
                 } else {
-                    alert('خطأ في إرسال البريد الاختباري: ' + (result.error || 'خطأ غير معروف'));
+                    alert('خطأ: ' + (result.error || 'خطأ غير معروف'));
                 }
             } catch (error) {
-                console.error('Error sending test email:', error);
-                alert('خطأ في إرسال البريد الاختباري. يرجى التحقق من وحدة التحكم.');
+                console.error('Error:', error);
+                alert('خطأ في إرسال البريد الاختباري. يرجى المحاولة مرة أخرى.');
             }
         }
         
         async function refreshInbox() {
             if (!currentEmail) {
-                currentEmail = localStorage.getItem('currentEmail');
-                if (currentEmail) {
-                    document.getElementById('emailAddress').value = currentEmail;
-                } else {
-                    document.getElementById('emailList').innerHTML = '<div class="no-emails">يرجى إنشاء عنوان بريد إلكتروني أولاً</div>';
-                    return;
-                }
+                document.getElementById('emailList').innerHTML = '<div class="no-emails">يرجى إنشاء عنوان بريد إلكتروني أولاً</div>';
+                return;
             }
             
             try {
                 document.getElementById('emailList').innerHTML = '<div class="loading">جاري تحميل الرسائل...</div>';
                 
-                const response = await fetch(`/api/emails/${encodeURIComponent(currentEmail)}`);
-                
-                if (!response.ok) {
-                    throw new Error(`Server error: ${response.status}`);
-                }
-                
+                const response = await fetch('/api/emails/' + encodeURIComponent(currentEmail));
                 const emails = await response.json();
-                console.log('Received emails:', emails);
                 
                 if (emails.length === 0) {
-                    document.getElementById('emailList').innerHTML = '<div class="no-emails">لا توجد رسائل بعد. بريدك الإلكتروني المؤقت جاهز لاستقبال الرسائل!</div>';
+                    document.getElementById('emailList').innerHTML = '<div class="no-emails">لا توجد رسائل بعد. بريدك الإلكتروني المؤقت جاهز!</div>';
                     return;
                 }
                 
-                document.getElementById('emailList').innerHTML = emails.map(email => `
-                    <div class="email-item" onclick="toggleEmail(${email.id})">
-                        <div class="email-subject">${email.subject || 'لا يوجد موضوع'}</div>
-                        <div class="email-preview">من: ${email.from_email} • ${new Date(email.timestamp).toLocaleString('ar-EG')}</div>
-                        <div id="email-${email.id}" class="email-content">
-                            <div><strong>من:</strong> ${email.from_email}</div>
-                            <div><strong>إلى:</strong> ${email.to_email}</div>
-                            <div><strong>التاريخ:</strong> ${new Date(email.timestamp).toLocaleString('ar-EG')}</div>
-                            <hr style="margin: 10px 0;">
-                            <div style="white-space: pre-line;">${email.body || 'لا يوجد محتوى'}</div>
-                        </div>
-                    </div>
-                `).join('');
+                let emailHTML = '';
+                emails.forEach(function(email) {
+                    emailHTML += '<div class="email-item" onclick="toggleEmail(' + email.id + ')">';
+                    emailHTML += '<div class="email-subject">' + (email.subject || 'لا يوجد موضوع') + '</div>';
+                    emailHTML += '<div class="email-preview">من: ' + email.from_email + ' • ' + new Date(email.timestamp).toLocaleString('ar-EG') + '</div>';
+                    emailHTML += '<div id="email-' + email.id + '" class="email-content">';
+                    emailHTML += '<div><strong>من:</strong> ' + email.from_email + '</div>';
+                    emailHTML += '<div><strong>إلى:</strong> ' + email.to_email + '</div>';
+                    emailHTML += '<div><strong>التاريخ:</strong> ' + new Date(email.timestamp).toLocaleString('ar-EG') + '</div>';
+                    emailHTML += '<hr style="margin: 10px 0;">';
+                    emailHTML += '<div style="white-space: pre-line;">' + (email.body || 'لا يوجد محتوى') + '</div>';
+                    emailHTML += '</div></div>';
+                });
+                
+                document.getElementById('emailList').innerHTML = emailHTML;
             } catch (error) {
-                console.error('Error fetching emails:', error);
-                document.getElementById('emailList').innerHTML = '<div class="error">خطأ في تحميل الرسائل. يرجى المحاولة مرة أخرى.</div>';
+                console.error('Error:', error);
+                document.getElementById('emailList').innerHTML = '<div class="error">خطأ في تحميل الرسائل</div>';
             }
         }
         
         function toggleEmail(emailId) {
-            const emailContent = document.getElementById(`email-${emailId}`);
+            const emailContent = document.getElementById('email-' + emailId);
             if (emailContent.style.display === 'block') {
                 emailContent.style.display = 'none';
             } else {
-                // Hide all other email contents
-                document.querySelectorAll('.email-content').forEach(el => {
-                    el.style.display = 'none';
-                });
                 emailContent.style.display = 'block';
             }
         }
-        
-        // Initialize event listeners after page loads
-        document.addEventListener('DOMContentLoaded', function() {
-            console.log('DOM loaded, setting up event listeners');
-            
-            // Set up button event listeners
-            document.getElementById('generateButton').addEventListener('click', generateEmail);
-            document.getElementById('copyButton').addEventListener('click', copyEmail);
-            document.getElementById('refreshButton').addEventListener('click', refreshInbox);
-            document.getElementById('testEmailButton').addEventListener('click', sendTestEmail);
-            document.getElementById('refreshInboxButton').addEventListener('click', refreshInbox);
-            
-            // Initialize with saved email or generate new one
-            const savedEmail = localStorage.getItem('currentEmail');
-            if (savedEmail) {
-                currentEmail = savedEmail;
-                document.getElementById('emailAddress').value = currentEmail;
-                refreshInbox();
-            }
-            
-            // Auto-refresh every 30 seconds
-            setInterval(refreshInbox, 30000);
-            
-            console.log('Event listeners set up successfully');
-        });
     </script>
 </body>
 </html>
