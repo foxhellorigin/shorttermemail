@@ -59,16 +59,25 @@ app.post('/api/simulate-email', (req, res) => {
     }
 });
 
-// Webhook endpoint for SendGrid (handles raw MIME messages)
+// Webhook endpoint for email services (handles both Mailgun and SendGrid)
 app.post('/api/webhook/email', async (req, res) => {
     try {
-        console.log('📧 Webhook received from SendGrid');
+        console.log('📧 Webhook received from email service');
         
         let toEmail, fromEmail, subject, body, htmlBody;
 
-        // Check if it's a raw MIME message (SendGrid format)
-        if (typeof req.body === 'string' && req.body.includes('From:') && req.body.includes('To:')) {
-            console.log('Processing raw MIME message from SendGrid');
+        // Check if it's Mailgun format
+        if (req.body.recipient && req.body.sender) {
+            console.log('Processing Mailgun format');
+            toEmail = req.body.recipient;
+            fromEmail = req.body.sender;
+            subject = req.body.subject || 'No Subject';
+            body = req.body['body-plain'] || req.body['stripped-text'] || 'No content';
+            htmlBody = req.body['body-html'] || req.body['stripped-html'] || '';
+        }
+        // Check if it's raw MIME message (SendGrid format)
+        else if (typeof req.body === 'string' && req.body.includes('From:') && req.body.includes('To:')) {
+            console.log('Processing raw MIME message');
             
             try {
                 const parsed = await simpleParser(req.body);
