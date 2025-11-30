@@ -59,62 +59,30 @@ app.post('/api/simulate-email', (req, res) => {
     }
 });
 
-// Webhook endpoint for Mailgun webhooks
-app.post('/api/webhook/email', async (req, res) => {
+// Webhook endpoint for Mailgun (updated for form-urlencoded)
+app.post('/api/webhook/email', express.urlencoded({ extended: true }), async (req, res) => {
     try {
-        console.log('📧 Webhook received from Mailgun');
+        console.log('📧 Webhook received');
         console.log('Content-Type:', req.get('Content-Type'));
-        console.log('Request body:', JSON.stringify(req.body, null, 2));
+        console.log('Request body:', req.body);
         
         let toEmail, fromEmail, subject, body, htmlBody;
 
-        // Mailgun Webhooks send event data in JSON format
-        if (req.body['event-data']) {
-            console.log('Processing Mailgun webhook event format');
-            const eventData = req.body['event-data'];
-            
-            if (eventData.event === 'delivered' && eventData.message) {
-                toEmail = eventData.message.recipients?.[0] || '';
-                fromEmail = eventData.message.headers?.from || '';
-                subject = eventData.message.headers?.subject || 'No Subject';
-                
-                // For webhooks, we might not have the full body, so use a placeholder
-                body = `Email delivered from ${fromEmail} with subject: ${subject}`;
-                htmlBody = '';
-                
-                console.log(`Mailgun webhook: To=${toEmail}, From=${fromEmail}, Subject=${subject}`);
-            }
-        }
-        // Mailgun Routes send as form-urlencoded
-        else if (req.body.recipient) {
-            console.log('Processing Mailgun route format (form-urlencoded)');
+        // Mailgun sends as application/x-www-form-urlencoded
+        if (req.body.recipient) {
+            console.log('✅ Processing Mailgun format');
             
             toEmail = req.body.recipient;
             fromEmail = req.body.sender;
             subject = req.body.subject || 'No Subject';
-            body = req.body['body-plain'] || req.body['stripped-text'] || req.body.body || 'No content';
+            body = req.body['body-plain'] || req.body['stripped-text'] || 'No content';
             htmlBody = req.body['body-html'] || req.body['stripped-html'] || '';
 
-            console.log(`Mailgun route: To=${toEmail}, From=${fromEmail}, Subject=${subject}`);
-        }
-        // Raw MIME format (SendGrid)
-        else if (typeof req.body === 'string' && req.body.includes('From:') && req.body.includes('To:')) {
-            console.log('Processing raw MIME message');
-            
-            try {
-                const parsed = await simpleParser(req.body);
-                toEmail = parsed.to?.text || '';
-                fromEmail = parsed.from?.text || '';
-                subject = parsed.subject || 'No Subject';
-                body = parsed.text || parsed.html || 'No content';
-                htmlBody = parsed.html || '';
-            } catch (parseError) {
-                console.error('Error parsing MIME:', parseError);
-            }
+            console.log(`📨 Mailgun data: To=${toEmail}, From=${fromEmail}, Subject=${subject}`);
         }
         // JSON format for manual testing
         else if (req.body.to && req.body.from) {
-            console.log('Processing JSON format email');
+            console.log('Processing JSON format');
             toEmail = req.body.to;
             fromEmail = req.body.from;
             subject = req.body.subject || 'No Subject';
@@ -122,9 +90,7 @@ app.post('/api/webhook/email', async (req, res) => {
             htmlBody = req.body.html || '';
         }
         else {
-            console.log('Unknown format, returning success to avoid retries');
-            console.log('Body type:', typeof req.body);
-            console.log('Body keys:', Object.keys(req.body));
+            console.log('❌ Unknown format:', Object.keys(req.body));
             return res.json({ success: true, message: 'Received but format not recognized' });
         }
 
@@ -132,16 +98,6 @@ app.post('/api/webhook/email', async (req, res) => {
             console.log('No recipient email found');
             return res.json({ success: true, message: 'No recipient found' });
         }
-
-        // Extract just the email address from "Name <email@domain.com>" format
-        const extractEmail = (emailString) => {
-            if (!emailString) return '';
-            const match = emailString.match(/<([^>]+)>/);
-            return match ? match[1] : emailString;
-        };
-
-        toEmail = extractEmail(toEmail);
-        fromEmail = extractEmail(fromEmail);
 
         // Store the email
         const newEmail = {
@@ -173,25 +129,11 @@ app.post('/api/webhook/email', async (req, res) => {
 app.get('/api/webhook/test', (req, res) => {
     res.json({ 
         message: 'Webhook endpoint is working!',
-        instructions: 'SendGrid sends raw MIME messages, manual tests use JSON',
-        supported_formats: ['SendGrid MIME', 'JSON']
-    });
-});
-
-app.get('/api/stats', (req, res) => {
-    res.json({
-        total_emails: emails.length,
-        unique_addresses: new Set(emails.map(e => e.to_email)).size,
-        current_time: new Date().toISOString(),
-        webhook_enabled: true
-    });
-});
-
-app.get('/health', (req, res) => {
-    res.json({ 
-        status: 'OK', 
-        timestamp: new Date().toISOString(),
-        environment: process.env.NODE_ENV || 'development'
+        supported_formats: ['Mailgun form-urlencoded', 'JSON', 'SendGrid MIME'],
+        test_commands: {
+            mailgun: 'curl -X POST https://shorttermemail.com/api/webhook/email -H "Content-Type: application/x-www-form-urlencoded" -d "recipient=test@shorttermemail.com&sender=test@gmail.com&subject=Test&body-plain=Hello"',
+            json: 'curl -X POST https://shorttermemail.com/api/webhook/email -H "Content-Type: application/json" -d \'{"to":"test@shorttermemail.com","from":"test@gmail.com","subject":"Test","text":"Hello"}\''
+        }
     });
 });
 
