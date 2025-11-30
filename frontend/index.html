@@ -231,7 +231,6 @@
     </div>
 
     <script>
-        // Define all functions first
         let currentEmail = '';
         
         function generateEmail() {
@@ -239,12 +238,12 @@
             const domains = [
                 'shorttermemail.com', 
                 'tempmail.shorttermemail.com', 
-                'quick.shorttermemail.com'
-		'Inbound.shorttermemail.com'
+                'quick.shorttermemail.com',
+                'inbound.shorttermemail.com'
             ];
             const randomString = Math.random().toString(36).substring(2, 10);
             const domain = domains[Math.floor(Math.random() * domains.length)];
-            currentEmail = `${randomString}@${domain}`;
+            currentEmail = randomString + '@' + domain;
             document.getElementById('emailAddress').value = currentEmail;
             localStorage.setItem('currentEmail', currentEmail);
             console.log('Generated email:', currentEmail);
@@ -309,10 +308,10 @@
             try {
                 document.getElementById('emailList').innerHTML = '<div class="loading">Loading emails...</div>';
                 
-                const response = await fetch(`/api/emails/${encodeURIComponent(currentEmail)}`);
+                const response = await fetch('/api/emails/' + encodeURIComponent(currentEmail));
                 
                 if (!response.ok) {
-                    throw new Error(`Server error: ${response.status}`);
+                    throw new Error('Server error: ' + response.status);
                 }
                 
                 const emails = await response.json();
@@ -323,19 +322,24 @@
                     return;
                 }
                 
-                document.getElementById('emailList').innerHTML = emails.map(email => `
-                    <div class="email-item" onclick="toggleEmail(${email.id})">
-                        <div class="email-subject">${email.subject || 'No Subject'}</div>
-                        <div class="email-preview">From: ${email.from_email} • ${new Date(email.timestamp).toLocaleString()}</div>
-                        <div id="email-${email.id}" class="email-content">
-                            <div><strong>From:</strong> ${email.from_email}</div>
-                            <div><strong>To:</strong> ${email.to_email}</div>
-                            <div><strong>Date:</strong> ${new Date(email.timestamp).toLocaleString()}</div>
-                            <hr style="margin: 10px 0;">
-                            <div style="white-space: pre-line;">${email.body || 'No content'}</div>
+                let emailListHTML = '';
+                for (let i = 0; i < emails.length; i++) {
+                    const email = emails[i];
+                    emailListHTML += `
+                        <div class="email-item" onclick="toggleEmail(${email.id})">
+                            <div class="email-subject">${email.subject || 'No Subject'}</div>
+                            <div class="email-preview">From: ${email.from_email} • ${new Date(email.timestamp).toLocaleString()}</div>
+                            <div id="email-${email.id}" class="email-content">
+                                <div><strong>From:</strong> ${email.from_email}</div>
+                                <div><strong>To:</strong> ${email.to_email}</div>
+                                <div><strong>Date:</strong> ${new Date(email.timestamp).toLocaleString()}</div>
+                                <hr style="margin: 10px 0;">
+                                <div style="white-space: pre-line;">${email.body || 'No content'}</div>
+                            </div>
                         </div>
-                    </div>
-                `).join('');
+                    `;
+                }
+                document.getElementById('emailList').innerHTML = emailListHTML;
             } catch (error) {
                 console.error('Error fetching emails:', error);
                 document.getElementById('emailList').innerHTML = '<div class="error">Error loading emails. Please try again.</div>';
@@ -343,30 +347,26 @@
         }
         
         function toggleEmail(emailId) {
-            const emailContent = document.getElementById(`email-${emailId}`);
+            const emailContent = document.getElementById('email-' + emailId);
             if (emailContent.style.display === 'block') {
                 emailContent.style.display = 'none';
             } else {
-                // Hide all other email contents
-                document.querySelectorAll('.email-content').forEach(el => {
+                document.querySelectorAll('.email-content').forEach(function(el) {
                     el.style.display = 'none';
                 });
                 emailContent.style.display = 'block';
             }
         }
         
-        // Initialize event listeners after page loads
         document.addEventListener('DOMContentLoaded', function() {
             console.log('DOM loaded, setting up event listeners');
             
-            // Set up button event listeners
             document.getElementById('generateButton').addEventListener('click', generateEmail);
             document.getElementById('copyButton').addEventListener('click', copyEmail);
             document.getElementById('refreshButton').addEventListener('click', refreshInbox);
             document.getElementById('testEmailButton').addEventListener('click', sendTestEmail);
             document.getElementById('refreshInboxButton').addEventListener('click', refreshInbox);
             
-            // Initialize with saved email or generate new one
             const savedEmail = localStorage.getItem('currentEmail');
             if (savedEmail) {
                 currentEmail = savedEmail;
@@ -374,7 +374,6 @@
                 refreshInbox();
             }
             
-            // Auto-refresh every 30 seconds
             setInterval(refreshInbox, 30000);
             
             console.log('Event listeners set up successfully');
