@@ -199,5 +199,19 @@ app.get('*', (req, res) => {
     });
 });
 
+// Add this to your backend/server.js before the webhook route
+app.post('/api/debug/webhook', express.urlencoded({ extended: true }), (req, res) => {
+    console.log('DEBUG - Content-Type:', req.get('Content-Type'));
+    console.log('DEBUG - Body:', req.body);
+    console.log('DEBUG - Body keys:', Object.keys(req.body));
+    console.log('DEBUG - Body recipient:', req.body.recipient);
+    res.json({
+        contentType: req.get('Content-Type'),
+        body: req.body,
+        bodyKeys: Object.keys(req.body),
+        hasRecipient: !!req.body.recipient
+    });
+});
+
 // Export for Vercel
 module.exports = app;
