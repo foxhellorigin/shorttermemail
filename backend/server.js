@@ -9,6 +9,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.text({ type: '*/*' })); // Handle raw text/MIME
+app.use(express.urlencoded({ extended: true })); // Handle form-urlencoded (Mailgun)
 app.use(express.static(path.join(__dirname, '../frontend')));
 
 // Simple in-memory storage
@@ -59,16 +60,16 @@ app.post('/api/simulate-email', (req, res) => {
     }
 });
 
-// Webhook endpoint for Mailgun (updated for form-urlencoded)
-app.post('/api/webhook/email', express.urlencoded({ extended: true }), async (req, res) => {
+// Webhook endpoint for email services
+app.post('/api/webhook/email', async (req, res) => {
     try {
         console.log('📧 Webhook received');
         console.log('Content-Type:', req.get('Content-Type'));
-        console.log('Request body:', req.body);
+        console.log('Request body keys:', Object.keys(req.body));
         
         let toEmail, fromEmail, subject, body, htmlBody;
 
-        // Mailgun sends as application/x-www-form-urlencoded
+        // Mailgun format (form-urlencoded)
         if (req.body.recipient) {
             console.log('✅ Processing Mailgun format');
             
@@ -78,11 +79,26 @@ app.post('/api/webhook/email', express.urlencoded({ extended: true }), async (re
             body = req.body['body-plain'] || req.body['stripped-text'] || 'No content';
             htmlBody = req.body['body-html'] || req.body['stripped-html'] || '';
 
-            console.log(`📨 Mailgun data: To=${toEmail}, From=${fromEmail}, Subject=${subject}`);
+            console.log(`📨 Mailgun: To=${toEmail}, From=${fromEmail}, Subject=${subject}`);
         }
-        // JSON format for manual testing
+        // Raw MIME format (SendGrid)
+        else if (typeof req.body === 'string' && req.body.includes('From:') && req.body.includes('To:')) {
+            console.log('Processing raw MIME message');
+            
+            try {
+                const parsed = await simpleParser(req.body);
+                toEmail = parsed.to?.text || '';
+                fromEmail = parsed.from?.text || '';
+                subject = parsed.subject || 'No Subject';
+                body = parsed.text || parsed.html || 'No content';
+                htmlBody = parsed.html || '';
+            } catch (parseError) {
+                console.error('Error parsing MIME:', parseError);
+            }
+        }
+        // JSON format (manual testing)
         else if (req.body.to && req.body.from) {
-            console.log('Processing JSON format');
+            console.log('Processing JSON format email');
             toEmail = req.body.to;
             fromEmail = req.body.from;
             subject = req.body.subject || 'No Subject';
@@ -90,7 +106,9 @@ app.post('/api/webhook/email', express.urlencoded({ extended: true }), async (re
             htmlBody = req.body.html || '';
         }
         else {
-            console.log('❌ Unknown format:', Object.keys(req.body));
+            console.log('❌ Unknown format');
+            console.log('Body type:', typeof req.body);
+            console.log('Body content:', req.body);
             return res.json({ success: true, message: 'Received but format not recognized' });
         }
 
@@ -98,6 +116,16 @@ app.post('/api/webhook/email', express.urlencoded({ extended: true }), async (re
             console.log('No recipient email found');
             return res.json({ success: true, message: 'No recipient found' });
         }
+
+        // Extract just the email address
+        const extractEmail = (emailString) => {
+            if (!emailString) return '';
+            const match = emailString.match(/<([^>]+)>/);
+            return match ? match[1] : emailString;
+        };
+
+        toEmail = extractEmail(toEmail);
+        fromEmail = extractEmail(fromEmail);
 
         // Store the email
         const newEmail = {
@@ -134,6 +162,23 @@ app.get('/api/webhook/test', (req, res) => {
             mailgun: 'curl -X POST https://shorttermemail.com/api/webhook/email -H "Content-Type: application/x-www-form-urlencoded" -d "recipient=test@shorttermemail.com&sender=test@gmail.com&subject=Test&body-plain=Hello"',
             json: 'curl -X POST https://shorttermemail.com/api/webhook/email -H "Content-Type: application/json" -d \'{"to":"test@shorttermemail.com","from":"test@gmail.com","subject":"Test","text":"Hello"}\''
         }
+    });
+});
+
+app.get('/api/stats', (req, res) => {
+    res.json({
+        total_emails: emails.length,
+        unique_addresses: new Set(emails.map(e => e.to_email)).size,
+        current_time: new Date().toISOString(),
+        webhook_enabled: true
+    });
+});
+
+app.get('/health', (req, res) => {
+    res.json({ 
+        status: 'OK', 
+        timestamp: new Date().toISOString(),
+        environment: process.env.NODE_ENV || 'development'
     });
 });
 
