@@ -59,42 +59,60 @@ app.post('/api/simulate-email', (req, res) => {
     }
 });
 
-// Webhook endpoint for email services (handles both Mailgun and SendGrid)
+// Webhook endpoint for Mailgun webhooks
 app.post('/api/webhook/email', async (req, res) => {
     try {
-        console.log('📧 Webhook received from email service');
+        console.log('📧 Webhook received from Mailgun');
+        console.log('Content-Type:', req.get('Content-Type'));
+        console.log('Request body:', JSON.stringify(req.body, null, 2));
         
         let toEmail, fromEmail, subject, body, htmlBody;
 
-        // Check if it's Mailgun format
-        if (req.body.recipient && req.body.sender) {
-            console.log('Processing Mailgun format');
+        // Mailgun Webhooks send event data in JSON format
+        if (req.body['event-data']) {
+            console.log('Processing Mailgun webhook event format');
+            const eventData = req.body['event-data'];
+            
+            if (eventData.event === 'delivered' && eventData.message) {
+                toEmail = eventData.message.recipients?.[0] || '';
+                fromEmail = eventData.message.headers?.from || '';
+                subject = eventData.message.headers?.subject || 'No Subject';
+                
+                // For webhooks, we might not have the full body, so use a placeholder
+                body = `Email delivered from ${fromEmail} with subject: ${subject}`;
+                htmlBody = '';
+                
+                console.log(`Mailgun webhook: To=${toEmail}, From=${fromEmail}, Subject=${subject}`);
+            }
+        }
+        // Mailgun Routes send as form-urlencoded
+        else if (req.body.recipient) {
+            console.log('Processing Mailgun route format (form-urlencoded)');
+            
             toEmail = req.body.recipient;
             fromEmail = req.body.sender;
             subject = req.body.subject || 'No Subject';
-            body = req.body['body-plain'] || req.body['stripped-text'] || 'No content';
+            body = req.body['body-plain'] || req.body['stripped-text'] || req.body.body || 'No content';
             htmlBody = req.body['body-html'] || req.body['stripped-html'] || '';
+
+            console.log(`Mailgun route: To=${toEmail}, From=${fromEmail}, Subject=${subject}`);
         }
-        // Check if it's raw MIME message (SendGrid format)
+        // Raw MIME format (SendGrid)
         else if (typeof req.body === 'string' && req.body.includes('From:') && req.body.includes('To:')) {
             console.log('Processing raw MIME message');
             
             try {
                 const parsed = await simpleParser(req.body);
-                
                 toEmail = parsed.to?.text || '';
                 fromEmail = parsed.from?.text || '';
                 subject = parsed.subject || 'No Subject';
                 body = parsed.text || parsed.html || 'No content';
                 htmlBody = parsed.html || '';
-
-                console.log(`Parsed MIME: To=${toEmail}, From=${fromEmail}, Subject=${subject}`);
             } catch (parseError) {
                 console.error('Error parsing MIME:', parseError);
-                return res.status(400).json({ error: 'Failed to parse MIME message' });
             }
         }
-        // JSON format (manual testing)
+        // JSON format for manual testing
         else if (req.body.to && req.body.from) {
             console.log('Processing JSON format email');
             toEmail = req.body.to;
@@ -104,17 +122,20 @@ app.post('/api/webhook/email', async (req, res) => {
             htmlBody = req.body.html || '';
         }
         else {
-            console.log('Unknown format:', typeof req.body, Object.keys(req.body));
-            return res.status(400).json({ error: 'Unsupported email format' });
+            console.log('Unknown format, returning success to avoid retries');
+            console.log('Body type:', typeof req.body);
+            console.log('Body keys:', Object.keys(req.body));
+            return res.json({ success: true, message: 'Received but format not recognized' });
         }
 
         if (!toEmail) {
             console.log('No recipient email found');
-            return res.status(400).json({ error: 'No recipient email found' });
+            return res.json({ success: true, message: 'No recipient found' });
         }
 
-        // Extract just the email address if it's in "Name <email@domain.com>" format
+        // Extract just the email address from "Name <email@domain.com>" format
         const extractEmail = (emailString) => {
+            if (!emailString) return '';
             const match = emailString.match(/<([^>]+)>/);
             return match ? match[1] : emailString;
         };
@@ -135,7 +156,7 @@ app.post('/api/webhook/email', async (req, res) => {
         };
 
         emails.push(newEmail);
-        console.log(`✅ Real email stored: ${toEmail} from ${fromEmail} (ID: ${newEmail.id})`);
+        console.log(`✅ Email stored: ${toEmail} from ${fromEmail} (ID: ${newEmail.id})`);
 
         res.json({ 
             success: true, 
@@ -143,8 +164,8 @@ app.post('/api/webhook/email', async (req, res) => {
             emailId: newEmail.id 
         });
     } catch (error) {
-        console.error('❌ Error processing email webhook:', error);
-        res.status(500).json({ error: error.message });
+        console.error('❌ Error processing webhook:', error);
+        res.json({ success: true, error: error.message });
     }
 });
 
