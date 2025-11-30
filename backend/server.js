@@ -2,14 +2,19 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const { simpleParser } = require('mailparser');
+const querystring = require('querystring');
 
 const app = express();
 
-// Middleware
+// Middleware - IMPORTANT: Order matters!
 app.use(cors());
+// Parse JSON bodies
 app.use(express.json());
-app.use(express.text({ type: '*/*' })); // Handle raw text/MIME
-app.use(express.urlencoded({ extended: true })); // Handle form-urlencoded (Mailgun)
+// Parse text bodies (for MIME)
+app.use(express.text({ type: '*/*' }));
+// Parse URL-encoded bodies (for Mailgun)
+app.use(express.urlencoded({ extended: true }));
+// Serve static files
 app.use(express.static(path.join(__dirname, '../frontend')));
 
 // Simple in-memory storage
@@ -65,26 +70,51 @@ app.post('/api/webhook/email', async (req, res) => {
     try {
         console.log('📧 Webhook received');
         console.log('Content-Type:', req.get('Content-Type'));
-        console.log('Request body keys:', Object.keys(req.body));
         
         let toEmail, fromEmail, subject, body, htmlBody;
 
-        // Mailgun format (form-urlencoded)
-        if (req.body.recipient) {
-            console.log('✅ Processing Mailgun format');
-            
-            toEmail = req.body.recipient;
-            fromEmail = req.body.sender;
-            subject = req.body.subject || 'No Subject';
-            body = req.body['body-plain'] || req.body['stripped-text'] || 'No content';
-            htmlBody = req.body['body-html'] || req.body['stripped-html'] || '';
+        const contentType = req.get('Content-Type') || '';
 
-            console.log(`📨 Mailgun: To=${toEmail}, From=${fromEmail}, Subject=${subject}`);
+        // Handle application/x-www-form-urlencoded (Mailgun)
+        if (contentType.includes('application/x-www-form-urlencoded')) {
+            console.log('✅ Processing form-urlencoded data');
+            
+            let formData;
+            if (typeof req.body === 'string') {
+                // Manual parsing if middleware didn't work
+                formData = querystring.parse(req.body);
+                console.log('Manually parsed form data:', formData);
+            } else {
+                formData = req.body;
+                console.log('Middleware parsed form data:', formData);
+            }
+
+            if (formData.recipient) {
+                console.log('✅ SUCCESS: Processing Mailgun format');
+                
+                toEmail = formData.recipient;
+                fromEmail = formData.sender;
+                subject = formData.subject || 'No Subject';
+                body = formData['body-plain'] || formData['stripped-text'] || 'No content';
+                htmlBody = formData['body-html'] || formData['stripped-html'] || '';
+
+                console.log(`📨 Mailgun: To=${toEmail}, From=${fromEmail}, Subject=${subject}`);
+            }
         }
-        // Raw MIME format (SendGrid)
+        // Handle JSON format
+        else if (contentType.includes('application/json')) {
+            console.log('Processing JSON format');
+            if (req.body.to && req.body.from) {
+                toEmail = req.body.to;
+                fromEmail = req.body.from;
+                subject = req.body.subject || 'No Subject';
+                body = req.body.text || req.body.html || 'No content';
+                htmlBody = req.body.html || '';
+            }
+        }
+        // Handle raw MIME format (SendGrid)
         else if (typeof req.body === 'string' && req.body.includes('From:') && req.body.includes('To:')) {
             console.log('Processing raw MIME message');
-            
             try {
                 const parsed = await simpleParser(req.body);
                 toEmail = parsed.to?.text || '';
@@ -96,19 +126,11 @@ app.post('/api/webhook/email', async (req, res) => {
                 console.error('Error parsing MIME:', parseError);
             }
         }
-        // JSON format (manual testing)
-        else if (req.body.to && req.body.from) {
-            console.log('Processing JSON format email');
-            toEmail = req.body.to;
-            fromEmail = req.body.from;
-            subject = req.body.subject || 'No Subject';
-            body = req.body.text || req.body.html || 'No content';
-            htmlBody = req.body.html || '';
-        }
         else {
             console.log('❌ Unknown format');
+            console.log('Content-Type:', contentType);
             console.log('Body type:', typeof req.body);
-            console.log('Body content:', req.body);
+            console.log('Body sample:', typeof req.body === 'string' ? req.body.substring(0, 100) : req.body);
             return res.json({ success: true, message: 'Received but format not recognized' });
         }
 
@@ -116,16 +138,6 @@ app.post('/api/webhook/email', async (req, res) => {
             console.log('No recipient email found');
             return res.json({ success: true, message: 'No recipient found' });
         }
-
-        // Extract just the email address
-        const extractEmail = (emailString) => {
-            if (!emailString) return '';
-            const match = emailString.match(/<([^>]+)>/);
-            return match ? match[1] : emailString;
-        };
-
-        toEmail = extractEmail(toEmail);
-        fromEmail = extractEmail(fromEmail);
 
         // Store the email
         const newEmail = {
@@ -153,6 +165,31 @@ app.post('/api/webhook/email', async (req, res) => {
     }
 });
 
+// Debug endpoint
+app.post('/api/debug/webhook', express.urlencoded({ extended: true }), (req, res) => {
+    console.log('DEBUG - Content-Type:', req.get('Content-Type'));
+    console.log('DEBUG - Body type:', typeof req.body);
+    console.log('DEBUG - Body:', req.body);
+    console.log('DEBUG - Body keys:', Object.keys(req.body));
+    
+    let parsedBody;
+    if (typeof req.body === 'string') {
+        parsedBody = querystring.parse(req.body);
+        console.log('DEBUG - Manually parsed:', parsedBody);
+    } else {
+        parsedBody = req.body;
+    }
+    
+    res.json({
+        contentType: req.get('Content-Type'),
+        bodyType: typeof req.body,
+        body: req.body,
+        bodyKeys: Object.keys(req.body),
+        parsedBody: parsedBody,
+        hasRecipient: !!parsedBody.recipient
+    });
+});
+
 // Test webhook endpoint
 app.get('/api/webhook/test', (req, res) => {
     res.json({ 
@@ -169,8 +206,7 @@ app.get('/api/stats', (req, res) => {
     res.json({
         total_emails: emails.length,
         unique_addresses: new Set(emails.map(e => e.to_email)).size,
-        current_time: new Date().toISOString(),
-        webhook_enabled: true
+        current_time: new Date().toISOString()
     });
 });
 
@@ -193,24 +229,7 @@ app.get('/ar', (req, res) => {
 
 // Handle all other routes
 app.get('*', (req, res) => {
-    res.status(404).json({ 
-        error: 'Route not found', 
-        path: req.path
-    });
-});
-
-// Add this to your backend/server.js before the webhook route
-app.post('/api/debug/webhook', express.urlencoded({ extended: true }), (req, res) => {
-    console.log('DEBUG - Content-Type:', req.get('Content-Type'));
-    console.log('DEBUG - Body:', req.body);
-    console.log('DEBUG - Body keys:', Object.keys(req.body));
-    console.log('DEBUG - Body recipient:', req.body.recipient);
-    res.json({
-        contentType: req.get('Content-Type'),
-        body: req.body,
-        bodyKeys: Object.keys(req.body),
-        hasRecipient: !!req.body.recipient
-    });
+    res.status(404).json({ error: 'Route not found' });
 });
 
 // Export for Vercel
