@@ -6,50 +6,67 @@ const querystring = require('querystring');
 
 const app = express();
 
-app.use(express.json({ limit: '10mb' }));
-app.use(express.text({ limit: '10mb', type: '*/*' }));
-app.use(express.urlencoded({ limit: '10mb', extended: true }));
-
-app.use(cors());
-app.use(express.static(path.join(__dirname, '../frontend')));
-
-// Also update custom parseFormData middleware:
-const parseFormData = (req, res, next) => {
-    if (req.is('application/x-www-form-urlencoded')) {
+// Custom body parsing middleware that handles large requests
+const customBodyParser = (req, res, next) => {
+    const contentType = req.get('Content-Type') || '';
+    
+    // Only parse large bodies for Mailgun webhook
+    if (req.url === '/api/webhook/email' && contentType.includes('application/x-www-form-urlencoded')) {
+        console.log('📧 Processing Mailgun webhook with custom parser');
+        
         let body = '';
+        let size = 0;
+        const MAX_SIZE = 50 * 1024 * 1024; // 50MB limit for Mailgun
+        
         req.on('data', chunk => {
             body += chunk.toString();
-            // Size check (10MB)
-            if (body.length > 10 * 1024 * 1024) {
-                console.log('⚠️ Email too large, truncating');
-                // Return success but truncate
-                req.body = { recipient: 'large-email@shorttermemail.com', subject: 'Large Email (Truncated)' };
-                next();
+            size += chunk.length;
+            
+            if (size > MAX_SIZE) {
+                console.log('⚠️ Request too large, sending 200 to stop retries');
+                // Return success to prevent Mailgun retries
+                res.status(200).json({ 
+                    success: true, 
+                    message: 'Email received (large email handled)' 
+                });
+                req.destroy(); // Stop receiving data
                 return;
             }
         });
+        
         req.on('end', () => {
             try {
                 req.body = querystring.parse(body);
+                console.log(`✅ Parsed Mailgun request: ${size} bytes`);
+                next();
             } catch (error) {
-                req.body = {};
+                console.error('Error parsing form data:', error);
+                res.status(200).json({ success: true, message: 'Email received' });
             }
-            next();
         });
-    } else {
-        next();
+        
+        req.on('error', (err) => {
+            console.error('Request error:', err);
+            res.status(200).json({ success: true, message: 'Email received' });
+        });
+    } 
+    // For all other routes, use standard Express parsers with limits
+    else {
+        // Skip body parsing for webhook to use our custom parser
+        if (req.url === '/api/webhook/email') {
+            next();
+        } else {
+            // Use standard parsers for other routes
+            express.json({ limit: '1mb' })(req, res, next);
+        }
     }
 };
 
-// Middleware - IMPORTANT: Order matters!
+// Apply custom middleware BEFORE other middleware
+app.use(customBodyParser);
+
+// Then add other standard middleware
 app.use(cors());
-// Parse JSON bodies
-app.use(express.json());
-// Parse text bodies (for MIME)
-app.use(express.text({ type: '*/*' }));
-// Parse URL-encoded bodies (for Mailgun)
-app.use(express.urlencoded({ extended: true }));
-// Serve static files
 app.use(express.static(path.join(__dirname, '../frontend')));
 
 // Simple in-memory storage
@@ -68,7 +85,7 @@ app.get('/api/emails/:email', (req, res) => {
     }
 });
 
-app.post('/api/simulate-email', (req, res) => {
+app.post('/api/simulate-email', express.json({ limit: '1mb' }), (req, res) => {
     try {
         const { toEmail, fromEmail, subject, body } = req.body;
         
@@ -103,55 +120,55 @@ app.post('/api/simulate-email', (req, res) => {
 // Webhook endpoint for email services
 app.post('/api/webhook/email', async (req, res) => {
     try {
-        console.log('📧 Webhook received');
-        console.log('Content-Type:', req.get('Content-Type'));
+        console.log('📧 Webhook processing started');
         
         let toEmail, fromEmail, subject, body, htmlBody;
 
-        const contentType = req.get('Content-Type') || '';
-
-        // Handle application/x-www-form-urlencoded (Mailgun)
-        if (contentType.includes('application/x-www-form-urlencoded')) {
-            console.log('✅ Processing form-urlencoded data');
+        // Mailgun format (form-urlencoded)
+        if (req.body && req.body.recipient) {
+            console.log('✅ Processing Mailgun format');
             
-            let formData;
-            if (typeof req.body === 'string') {
-                // Manual parsing if middleware didn't work
-                formData = querystring.parse(req.body);
-                console.log('Manually parsed form data:', formData);
+            toEmail = req.body.recipient;
+            fromEmail = req.body.sender;
+            subject = req.body.subject || 'No Subject';
+            
+            // Handle large emails - store only essential parts
+            const fullBody = req.body['body-plain'] || req.body['stripped-text'] || '';
+            const fullHtml = req.body['body-html'] || req.body['stripped-html'] || '';
+            
+            // For large emails, truncate but still store
+            const MAX_CONTENT = 10000; // 10KB max storage
+            if (fullBody.length > MAX_CONTENT) {
+                body = fullBody.substring(0, MAX_CONTENT) + '\n\n...[Email truncated - too large]';
+                console.log(`⚠️ Truncated large email body from ${fullBody.length} to ${MAX_CONTENT} chars`);
             } else {
-                formData = req.body;
-                console.log('Middleware parsed form data:', formData);
+                body = fullBody;
+            }
+            
+            if (fullHtml.length > MAX_CONTENT) {
+                htmlBody = fullHtml.substring(0, MAX_CONTENT) + '<p>...[Email truncated - too large]</p>';
+            } else {
+                htmlBody = fullHtml;
             }
 
-            if (formData.recipient) {
-                console.log('✅ SUCCESS: Processing Mailgun format');
-                
-                toEmail = formData.recipient;
-                fromEmail = formData.sender;
-                subject = formData.subject || 'No Subject';
-                body = formData['body-plain'] || formData['stripped-text'] || 'No content';
-                htmlBody = formData['body-html'] || formData['stripped-html'] || '';
-
-                console.log(`📨 Mailgun: To=${toEmail}, From=${fromEmail}, Subject=${subject}`);
-            }
+            console.log(`📨 Mailgun: To=${toEmail}, From=${fromEmail}, Subject=${subject}, Body size=${body.length}`);
         }
-        // Handle JSON format
-        else if (contentType.includes('application/json')) {
-            console.log('Processing JSON format');
-            if (req.body.to && req.body.from) {
-                toEmail = req.body.to;
-                fromEmail = req.body.from;
-                subject = req.body.subject || 'No Subject';
-                body = req.body.text || req.body.html || 'No content';
-                htmlBody = req.body.html || '';
-            }
+        // JSON format (manual testing)
+        else if (req.body && req.body.to && req.body.from) {
+            console.log('Processing JSON format email');
+            toEmail = req.body.to;
+            fromEmail = req.body.from;
+            subject = req.body.subject || 'No Subject';
+            body = req.body.text || req.body.html || 'No content';
+            htmlBody = req.body.html || '';
         }
-        // Handle raw MIME format (SendGrid)
+        // Raw MIME format (SendGrid) - handle with size limits
         else if (typeof req.body === 'string' && req.body.includes('From:') && req.body.includes('To:')) {
             console.log('Processing raw MIME message');
             try {
-                const parsed = await simpleParser(req.body);
+                // Limit MIME parsing to first 50KB
+                const mimeContent = req.body.length > 50000 ? req.body.substring(0, 50000) + '...[TRUNCATED]' : req.body;
+                const parsed = await simpleParser(mimeContent);
                 toEmail = parsed.to?.text || '';
                 fromEmail = parsed.from?.text || '';
                 subject = parsed.subject || 'No Subject';
@@ -162,32 +179,31 @@ app.post('/api/webhook/email', async (req, res) => {
             }
         }
         else {
-            console.log('❌ Unknown format');
-            console.log('Content-Type:', contentType);
-            console.log('Body type:', typeof req.body);
-            console.log('Body sample:', typeof req.body === 'string' ? req.body.substring(0, 100) : req.body);
-            return res.json({ success: true, message: 'Received but format not recognized' });
+            console.log('❓ Unknown format, but returning success to prevent retries');
+            return res.json({ success: true, message: 'Email received (unknown format)' });
         }
 
         if (!toEmail) {
             console.log('No recipient email found');
-            return res.json({ success: true, message: 'No recipient found' });
+            return res.json({ success: true, message: 'Email received (no recipient)' });
         }
 
-        // Store the email
+        // Store the email (truncated if needed)
         const newEmail = {
             id: emailId++,
             to_email: toEmail,
             from_email: fromEmail || 'unknown@sender.com',
-            subject: subject,
-            body: body,
-            html_body: htmlBody,
+            subject: subject.substring(0, 200), // Limit subject length
+            body: body.substring(0, 20000), // Limit body to 20KB
+            html_body: htmlBody.substring(0, 20000), // Limit HTML to 20KB
             timestamp: new Date().toISOString(),
-            attachments: []
+            attachments: [],
+            size: body.length + htmlBody.length,
+            truncated: (body.length >= 10000 || htmlBody.length >= 10000) ? true : false
         };
 
         emails.push(newEmail);
-        console.log(`✅ Email stored: ${toEmail} from ${fromEmail} (ID: ${newEmail.id})`);
+        console.log(`✅ Email stored: ${toEmail} (ID: ${newEmail.id}, Size: ${newEmail.size} chars)`);
 
         res.json({ 
             success: true, 
@@ -195,45 +211,19 @@ app.post('/api/webhook/email', async (req, res) => {
             emailId: newEmail.id 
         });
     } catch (error) {
-        console.error('❌ Error processing webhook:', error);
+        console.error('❌ Error in webhook processing:', error);
+        // Always return 200 to prevent Mailgun retries
         res.json({ success: true, error: error.message });
     }
-});
-
-// Debug endpoint
-app.post('/api/debug/webhook', express.urlencoded({ extended: true }), (req, res) => {
-    console.log('DEBUG - Content-Type:', req.get('Content-Type'));
-    console.log('DEBUG - Body type:', typeof req.body);
-    console.log('DEBUG - Body:', req.body);
-    console.log('DEBUG - Body keys:', Object.keys(req.body));
-    
-    let parsedBody;
-    if (typeof req.body === 'string') {
-        parsedBody = querystring.parse(req.body);
-        console.log('DEBUG - Manually parsed:', parsedBody);
-    } else {
-        parsedBody = req.body;
-    }
-    
-    res.json({
-        contentType: req.get('Content-Type'),
-        bodyType: typeof req.body,
-        body: req.body,
-        bodyKeys: Object.keys(req.body),
-        parsedBody: parsedBody,
-        hasRecipient: !!parsedBody.recipient
-    });
 });
 
 // Test webhook endpoint
 app.get('/api/webhook/test', (req, res) => {
     res.json({ 
         message: 'Webhook endpoint is working!',
-        supported_formats: ['Mailgun form-urlencoded', 'JSON', 'SendGrid MIME'],
-        test_commands: {
-            mailgun: 'curl -X POST https://shorttermemail.com/api/webhook/email -H "Content-Type: application/x-www-form-urlencoded" -d "recipient=test@shorttermemail.com&sender=test@gmail.com&subject=Test&body-plain=Hello"',
-            json: 'curl -X POST https://shorttermemail.com/api/webhook/email -H "Content-Type: application/json" -d \'{"to":"test@shorttermemail.com","from":"test@gmail.com","subject":"Test","text":"Hello"}\''
-        }
+        note: 'Large email support enabled (up to 50MB)',
+        storage_limit: 'Emails truncated to 20KB for display',
+        test_command: 'curl -X POST https://shorttermemail.com/api/webhook/email -H "Content-Type: application/x-www-form-urlencoded" -d "recipient=test@shorttermemail.com&sender=test@gmail.com&subject=Test&body-plain=Hello"'
     });
 });
 
@@ -241,7 +231,9 @@ app.get('/api/stats', (req, res) => {
     res.json({
         total_emails: emails.length,
         unique_addresses: new Set(emails.map(e => e.to_email)).size,
-        current_time: new Date().toISOString()
+        current_time: new Date().toISOString(),
+        max_stored_size: '20KB per email',
+        large_email_support: true
     });
 });
 
@@ -249,7 +241,8 @@ app.get('/health', (req, res) => {
     res.json({ 
         status: 'OK', 
         timestamp: new Date().toISOString(),
-        environment: process.env.NODE_ENV || 'development'
+        environment: process.env.NODE_ENV || 'development',
+        large_email_support: 'Enabled (50MB limit)'
     });
 });
 
