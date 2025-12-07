@@ -6,6 +6,32 @@ const querystring = require('querystring');
 
 const app = express();
 
+// Add at the top of your server.js, before middleware
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
+app.use(express.text({ limit: '10mb' }));
+
+// Also update your custom parseFormData middleware:
+const parseFormData = (req, res, next) => {
+    if (req.is('application/x-www-form-urlencoded')) {
+        let body = '';
+        req.on('data', chunk => {
+            body += chunk.toString();
+            // Optional: Add size check
+            if (body.length > 10 * 1024 * 1024) { // 10MB
+                res.status(413).json({ error: 'Request too large' });
+                return;
+            }
+        });
+        req.on('end', () => {
+            req.body = querystring.parse(body);
+            next();
+        });
+    } else {
+        next();
+    }
+};
+
 // Middleware - IMPORTANT: Order matters!
 app.use(cors());
 // Parse JSON bodies
