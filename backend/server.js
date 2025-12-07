@@ -3,8 +3,12 @@ const cors = require('cors');
 const path = require('path');
 const { simpleParser } = require('mailparser');
 const querystring = require('querystring');
+const { inject } = require('@vercel/analytics');
 
 const app = express();
+
+// Initialize Vercel Web Analytics
+inject();
 
 // Disable default body parsers for webhook route
 const noBodyParser = (req, res, next) => {
