@@ -19,7 +19,7 @@
     "backend/server.js": {
       "maxDuration": 30,
       "memory": 1024,
-      "maxRequestBodySize": 10485760  # 10MB limit
+      "maxRequestBodySize": 10485760
     }
   }
 }

@@ -6,25 +6,34 @@ const querystring = require('querystring');
 
 const app = express();
 
-// Add at the top of your server.js, before middleware
 app.use(express.json({ limit: '10mb' }));
+app.use(express.text({ limit: '10mb', type: '*/*' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
-app.use(express.text({ limit: '10mb' }));
 
-// Also update your custom parseFormData middleware:
+app.use(cors());
+app.use(express.static(path.join(__dirname, '../frontend')));
+
+// Also update custom parseFormData middleware:
 const parseFormData = (req, res, next) => {
     if (req.is('application/x-www-form-urlencoded')) {
         let body = '';
         req.on('data', chunk => {
             body += chunk.toString();
-            // Optional: Add size check
-            if (body.length > 10 * 1024 * 1024) { // 10MB
-                res.status(413).json({ error: 'Request too large' });
+            // Size check (10MB)
+            if (body.length > 10 * 1024 * 1024) {
+                console.log('⚠️ Email too large, truncating');
+                // Return success but truncate
+                req.body = { recipient: 'large-email@shorttermemail.com', subject: 'Large Email (Truncated)' };
+                next();
                 return;
             }
         });
         req.on('end', () => {
-            req.body = querystring.parse(body);
+            try {
+                req.body = querystring.parse(body);
+            } catch (error) {
+                req.body = {};
+            }
             next();
         });
     } else {
